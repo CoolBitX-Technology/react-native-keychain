@@ -33,9 +33,9 @@ public class DecryptionResultHandlerInteractiveBiometric extends BiometricPrompt
   protected static final String LOG_TAG = DecryptionResultHandlerInteractiveBiometric.class.getSimpleName();
 
   public DecryptionResultHandlerInteractiveBiometric(
-                                                     @NonNull ReactApplicationContext reactContext,
-                                                     @NonNull final CipherStorage storage,
-                                                     @NonNull final BiometricPrompt.PromptInfo promptInfo) {
+    @NonNull ReactApplicationContext reactContext,
+    @NonNull final CipherStorage storage,
+    @NonNull final BiometricPrompt.PromptInfo promptInfo) {
     this.reactContext = reactContext;
     this.storage = (CipherStorageBase) storage;
     this.promptInfo = promptInfo;
@@ -80,7 +80,7 @@ public class DecryptionResultHandlerInteractiveBiometric extends BiometricPrompt
   /** Called when an unrecoverable error has been encountered and the operation is complete. */
   @Override
   public void onAuthenticationError(final int errorCode, @NonNull final CharSequence errString) {
-    final CryptoFailedException error = new CryptoFailedException("code: " + errorCode + ", msg: " + errString);
+    final CryptoFailedException error = new CryptoFailedException(errorCode, errString);
 
     onDecrypt(null, error);
   }

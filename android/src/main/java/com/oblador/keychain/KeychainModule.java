@@ -302,7 +302,8 @@ public class KeychainModule extends ReactContextBaseJavaModule {
       try {
         decryptionResult = decryptCredentials(alias, cipher, resultSet, rules, promptInfo);
       } catch (CryptoFailedException e) {
-        if (isAndroidApi28Or29() && isBiometricOrDeviceCredential(options)) {
+        boolean isFailedMultipleTimes = e.getErrorCode() == CryptoFailedException.ErrorCode.FAILED_MULTIPLE_TIMES;
+        if (isAndroidApi28Or29() && isBiometricOrDeviceCredential(options) && isFailedMultipleTimes) {
           // fallback to device credential on Android API Level 28 or 29
           promptInfo = getDeviceCredentialPromptInfoForAndroidApi28Or29(options);
           decryptionResult = decryptCredentials(alias, cipher, resultSet, rules, promptInfo);
