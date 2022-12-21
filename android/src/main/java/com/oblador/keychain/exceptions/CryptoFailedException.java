@@ -7,7 +7,8 @@ import java.security.GeneralSecurityException;
 public class CryptoFailedException extends GeneralSecurityException {
   public @interface ErrorCode {
     int UNKNOWN = -1;
-    int CANCELLED = 13;
+    int CANCEL_BUTTON_CLICKED = 13;
+    int CANCEL_BY_PRESS_OUTSIDE_PROMPT = 10;
     int FAILED_MULTIPLE_TIMES = 7;
   }
   private int errorCode = ErrorCode.UNKNOWN;
