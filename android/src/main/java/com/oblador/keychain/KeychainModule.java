@@ -283,7 +283,7 @@ public class KeychainModule extends ReactContextBaseJavaModule {
 
       final String storageName = resultSet.cipherStorageName;
       final String rules = getSecurityRulesOrDefault(options);
-      final PromptInfo promptInfo = getPromptInfo(options);
+      PromptInfo promptInfo = getPromptInfo(options);
 
       CipherStorage cipher = null;
 
@@ -298,25 +298,35 @@ public class KeychainModule extends ReactContextBaseJavaModule {
         cipher = getCipherStorageByName(storageName);
       }
 
-      final DecryptionResult decryptionResult = decryptCredentials(alias, cipher, resultSet, rules, promptInfo);
+      DecryptionResult decryptionResult;
+      try {
+        decryptionResult = decryptCredentials(alias, cipher, resultSet, rules, promptInfo);
+      } catch (CryptoFailedException e) {
+        if (isAndroidApi28Or29() && isBiometricOrDeviceCredential(options)) {
+          // fallback to device credential on Android API Level 28 or 29
+          promptInfo = getDeviceCredentialPromptInfoForAndroidApi28Or29(options);
+          decryptionResult = decryptCredentials(alias, cipher, resultSet, rules, promptInfo);
+        } else {
+          throw e;
+        }
+      }
 
       final WritableMap credentials = Arguments.createMap();
       credentials.putString(Maps.SERVICE, alias);
       credentials.putString(Maps.USERNAME, decryptionResult.username);
       credentials.putString(Maps.PASSWORD, decryptionResult.password);
       credentials.putString(Maps.STORAGE, cipher.getCipherStorageName());
-
       promise.resolve(credentials);
     } catch (KeyStoreAccessException e) {
-      Log.e(KEYCHAIN_MODULE, e.getMessage());
+      Log.e(KEYCHAIN_MODULE, "getGenericPassword KeyStoreAccessException", e);
 
       promise.reject(Errors.E_KEYSTORE_ACCESS_ERROR, e);
     } catch (CryptoFailedException e) {
-      Log.e(KEYCHAIN_MODULE, e.getMessage());
+      Log.e(KEYCHAIN_MODULE, "getGenericPassword CryptoFailedException", e);
 
       promise.reject(Errors.E_CRYPTO_FAILED, e);
     } catch (Throwable fail) {
-      Log.e(KEYCHAIN_MODULE, fail.getMessage(), fail);
+      Log.e(KEYCHAIN_MODULE, "getGenericPassword Throwable", fail);
 
       promise.reject(Errors.E_UNKNOWN_ERROR, fail);
     }
@@ -589,11 +599,19 @@ public class KeychainModule extends ReactContextBaseJavaModule {
     cipherStorageMap.put(cipherStorage.getCipherStorageName(), cipherStorage);
   }
 
-  /** Extract user specified prompt info from options. */
-  @NonNull
-  private static PromptInfo getPromptInfo(@Nullable final ReadableMap options) {
-    final ReadableMap promptInfoOptionsMap = (options != null && options.hasKey(Maps.AUTH_PROMPT)) ? options.getMap(Maps.AUTH_PROMPT) : null;
+  private static boolean isAndroidApi28Or29() {
+    return Build.VERSION.SDK_INT == Build.VERSION_CODES.P
+      || Build.VERSION.SDK_INT == Build.VERSION_CODES.Q;
+  }
 
+  private static boolean isBiometricOrDeviceCredential(@Nullable final ReadableMap options) {
+    final String accessControl = getAccessControlOrDefault(options);
+    return accessControl.equals(AccessControl.BIOMETRY_CURRENT_SET_OR_DEVICE_PASSCODE)
+      || accessControl.equals(AccessControl.BIOMETRY_ANY_OR_DEVICE_PASSCODE);
+  }
+
+  private static PromptInfo.Builder getBasePromptInfoBuilder(@Nullable ReadableMap options) {
+    final ReadableMap promptInfoOptionsMap = getPromptInfoOptionsMap(options);
     final PromptInfo.Builder promptInfoBuilder = new PromptInfo.Builder();
     if (null != promptInfoOptionsMap && promptInfoOptionsMap.hasKey(AuthPromptOptions.TITLE)) {
       String promptInfoTitle = promptInfoOptionsMap.getString(AuthPromptOptions.TITLE);
@@ -608,23 +626,50 @@ public class KeychainModule extends ReactContextBaseJavaModule {
       promptInfoBuilder.setDescription(promptInfoDescription);
     }
 
-    final String accessControl = getAccessControlOrDefault(options);
-    final boolean isBiometryOrPasscode = accessControl.equals(AccessControl.BIOMETRY_CURRENT_SET_OR_DEVICE_PASSCODE) || accessControl.equals(AccessControl.BIOMETRY_ANY_OR_DEVICE_PASSCODE);
-    if (null != promptInfoOptionsMap && promptInfoOptionsMap.hasKey(AuthPromptOptions.CANCEL) && !isBiometryOrPasscode) {
-      String promptInfoNegativeButton = promptInfoOptionsMap.getString(AuthPromptOptions.CANCEL);
-      promptInfoBuilder.setNegativeButtonText(promptInfoNegativeButton);
-    }
-
-    /* PromptInfo is only used in Biometric-enabled RSA storage and can only be unlocked by a strong biometric */
-    int allowedAuthenticators = isBiometryOrPasscode ? BiometricManager.Authenticators.BIOMETRIC_STRONG | BiometricManager.Authenticators.DEVICE_CREDENTIAL : BiometricManager.Authenticators.BIOMETRIC_STRONG;
-    promptInfoBuilder.setAllowedAuthenticators(allowedAuthenticators);
-
     /* Bypass confirmation to avoid KeyStore unlock timeout being exceeded when using passive biometrics */
     promptInfoBuilder.setConfirmationRequired(false);
+
+    return promptInfoBuilder;
+  }
+
+  private static ReadableMap getPromptInfoOptionsMap(@Nullable final ReadableMap options) {
+    return (options != null && options.hasKey(Maps.AUTH_PROMPT)) ? options.getMap(Maps.AUTH_PROMPT) : null;
+  }
+
+  /** Extract user specified prompt info from options. */
+  @NonNull
+  private static PromptInfo getPromptInfo(@Nullable final ReadableMap options) {
+    final ReadableMap promptInfoOptionsMap = getPromptInfoOptionsMap(options);
+    PromptInfo.Builder promptInfoBuilder = getBasePromptInfoBuilder(options);
+
+    /* PromptInfo is only used in Biometric-enabled RSA storage and can only be unlocked by a strong biometric */
+    final boolean isBiometryOrPasscode = isBiometricOrDeviceCredential(options);
+
+    /* PromptInfo is only used in Biometric-enabled RSA storage and can only be unlocked by a strong biometric */
+    // BIOMETRIC_STRONG | DEVICE_CREDENTIAL is unsupported on API 28-29
+    if (isBiometryOrPasscode && !isAndroidApi28Or29()) {
+      promptInfoBuilder.setAllowedAuthenticators(
+        BiometricManager.Authenticators.BIOMETRIC_STRONG | BiometricManager.Authenticators.DEVICE_CREDENTIAL
+      );
+    } else {
+      if (null != promptInfoOptionsMap && promptInfoOptionsMap.hasKey(AuthPromptOptions.CANCEL)) {
+        String promptInfoNegativeButtonText = promptInfoOptionsMap.getString(AuthPromptOptions.CANCEL);
+        promptInfoBuilder.setNegativeButtonText(promptInfoNegativeButtonText);
+      }
+      promptInfoBuilder.setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG);
+    }
 
     final PromptInfo promptInfo = promptInfoBuilder.build();
 
     return promptInfo;
+  }
+
+  @NonNull
+  private static PromptInfo getDeviceCredentialPromptInfoForAndroidApi28Or29(@Nullable final ReadableMap options) {
+    // DEVICE_CREDENTIAL alone is unsupported prior to API 30
+    PromptInfo.Builder promptInfoBuilder = getBasePromptInfoBuilder(options);
+    promptInfoBuilder.setDeviceCredentialAllowed(true);
+    return promptInfoBuilder.build();
   }
 
   /**
