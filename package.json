@@ -16,7 +16,7 @@
     "lint": "eslint .",
     "flow": "flow",
     "test": "./gradlew test",
-    "deploy": "npm publish --access public"
+    "deploy": "yarn --frozen-lockfile --non-interactive --silent && npm publish --access public"
   },
   "keywords": [
     "react-native",
@@ -32,9 +32,9 @@
     "name": "Joel Arvidsson",
     "email": "joel@oblador.se"
   },
-  "homepage": "https://github.com/oblador/react-native-keychain",
+  "homepage": "https://github.com/CoolBitX-Technology/react-native-keychain",
   "bugs": {
-    "url": "https://github.com/oblador/react-native-keychain/issues"
+    "url": "https://github.com/CoolBitX-Technology/react-native-keychain/issues"
   },
   "typescript": {
     "definition": "typings/react-native-keychain.d.ts"
@@ -42,7 +42,7 @@
   "types": "typings/react-native-keychain.d.ts",
   "repository": {
     "type": "git",
-    "url": "git://github.com/oblador/react-native-keychain.git"
+    "url": "git://github.com/CoolBitX-Technology/react-native-keychain.git"
   },
   "license": "MIT",
   "devDependencies": {
