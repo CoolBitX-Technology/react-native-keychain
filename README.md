@@ -1,96 +1,67 @@
-<h1 align="center"><img
-    src="website/static/img/logo.png"
-    align="center" width="50" height="50" alt=""
-  /> react-native-keychain</h1>
+# React Native Keychain
 
-[![Tests](https://github.com/oblador/react-native-keychain/actions/workflows/e2e_tests.yaml/badge.svg)](https://github.com/oblador/react-native-keychain/actions/workflows/e2e_tests.yaml) [![npm](https://img.shields.io/npm/v/react-native-keychain.svg)](https://npmjs.com/package/react-native-keychain) [![npm](https://img.shields.io/npm/dm/react-native-keychain.svg)](https://npmjs.com/package/react-native-keychain)
+## 關於分支管理
 
-This library provides access to the Keychain (iOS) and Keystore (Android) for securely storing credentials like passwords, tokens, or other sensitive information in React Native apps.
+### Main 分支
+- **main** 分支表示我們 repo 追蹤的主要分支
+- 我們自己的最新改動都合併至 main 分支
 
-- [Installation](#installation)
-- [Documentation](#documentation)
-- [Changelog](#changelog)
-- [Maintainers](#maintainers)
-- [Used By](#used-by)
-- [License](#license)
+### Master 分支
+- **master** 分支表示 upstream 追蹤的主要分支
+- 可以在 Github 的介面找到 **Sync fork** 按鈕
+- 點擊 **discard {n} commits** 來同步 upstream
 
-## Installation
+## 建置專案
 
-1. Run `yarn add react-native-keychain`
-2. Run `pod install` in `ios/` directory to install iOS dependencies.
-3. If you want to support FaceID, add a `NSFaceIDUsageDescription` entry in your `Info.plist`.
-4. Re-build your Android and iOS projects.
+1. **Clone 專案**
+   ```bash
+   git clone https://github.com/CoolBitX-Technology/react-native-keychain.git
+   ```
 
-## Documentation
+2. **檢查 Yarn 版本**
+   ```bash
+   yarn -v
+   ```
+   > 確保 yarn 版本和 `package.json` 內指定的相同
 
-Please refer to the documentation website on https://oblador.github.io/react-native-keychain
+3. **安裝依賴**
+   ```bash
+   yarn install
+   ```
 
-## Changelog
+4. **部署至 npm（可選）**
+   
+   如果有相關改動需要發布：
+   ```bash
+   yarn run deploy
+   ```
+   > ⚠️ **注意**: 需要登入 npm。登入資料可以在 1Password 查看。
 
-Check the [GitHub Releases page](https://github.com/oblador/react-native-keychain/releases).
+## 在本地 App 專案進行測試
 
-## Maintainers
+1. **複製本地路徑**
+   
+   複製本地 react-native-keychain 的路徑，例如：
+   ```
+   /Users/kimlai/react-native-keychain
+   ```
 
-<table>
-  <tbody>
-    <tr>
-      <td align="center">
-        <a href="https://github.com/oblador">
-          <img width="100" height="100" src="https://github.com/oblador.png?v=3&s=150">
-          <br />
-          <strong>Joel Arvidsson</strong>
-        </a>
-        <br />
-        Author
-      </td>
-      <td align="center">
-        <a href="https://github.com/DorianMazur">
-          <img width="100" height="100" src="https://github.com/DorianMazur.png?v=3&s=150">
-          <br />
-          <strong>Dorian Mazur</strong>
-        </a>
-        <br />
-        Maintainer
-      </td>
-      <td align="center">
-        <a href="https://github.com/vonovak">
-          <img width="100" height="100" src="https://github.com/vonovak.png?v=3&s=150">
-          <br />
-          <strong>Vojtech Novak</strong>
-        </a>
-        <br />
-        Maintainer
-      </td>
-      <td align="center">
-        <a href="https://github.com/pcoltau">
-          <img width="100" height="100" src="https://github.com/pcoltau.png?v=3&s=150">
-          <br />
-          <strong>Pelle Stenild Coltau</strong>
-        </a>
-        <br />
-        Maintainer
-      </td>
-      <td align="center">
-        <a href="https://github.com/OleksandrKucherenko">
-          <img width="100" height="100" src="https://github.com/OleksandrKucherenko.png?v=3&s=150">
-          <br />
-          <strong>Oleksandr Kucherenko</strong>
-        </a>
-        <br />
-        Contributor
-      </td>
-    </tr>
-  <tbody>
-</table>
+2. **更新 package.json**
+   
+   將路徑貼到 app 專案的 `package.json`：
+   ```json
+   {
+     "dependencies": {
+       "react-native-keychain": "/Users/kimlai/react-native-keychain"
+     }
+   }
+   ```
 
-## Used By
+3. **安裝依賴**
+   ```bash
+   yarn install
+   ```
 
-This library is used by several projects, including:
-
-- [Rainbow Wallet](https://github.com/rainbow-me/rainbow)
-- [MetaMask Mobile](https://github.com/MetaMask/metamask-mobile)
-- [BlueWallet](https://github.com/bluewallet/bluewallet)
-
-## License
-
-MIT © Joel Arvidsson 2016-2020
+4. **開啟 App 進行測試**
+   
+   完成設定後即可開啟 App 進行測試
