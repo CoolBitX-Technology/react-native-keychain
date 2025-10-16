@@ -5,6 +5,7 @@ import android.text.TextUtils
 import android.util.Log
 import androidx.annotation.StringDef
 import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
 import androidx.biometric.BiometricPrompt.PromptInfo
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
@@ -301,10 +302,21 @@ class KeychainModule(reactContext: ReactApplicationContext) :
           var promptInfo = getPromptInfo(options, usePasscode, useBiometry)
           val cipher = getCipherStorageByName(storageName)
 
+          //
           var decryptionResult: DecryptionResult
           try {
             decryptionResult = decryptCredentials(alias, cipher!!, resultSet, promptInfo)
           } catch (e: CryptoFailedException) {
+            Log.e(KEYCHAIN_MODULE, "getGenericPassword error message:" + e.message);
+
+            // fallback to device credential on Android API Level 28 or 29
+            if (e.message?.startsWith("code: 13") == true || e.message?.startsWith("code: 10") == true) {
+              // click cancel button: message="code: 13, msg: Cancel", androidx.biometric.BiometricPrompt.ERROR_USER_CANCELED = 10
+              // click backdrop: message="code: 10, msg: Authentication cancelled", androidx.biometric.BiometricPrompt.ERROR_NEGATIVE_BUTTON = 13
+              // cancel error message: "code: 13, msg: Cancel"
+              throw e
+            }
+
             if (isAndroidApi28Or29() && isBiometricOrDeviceCredential(options)) {
               // fallback to device credential on Android API Level 28 or 29
               promptInfo = getDeviceCredentialPromptInfoForAndroidApi28Or29(options)
