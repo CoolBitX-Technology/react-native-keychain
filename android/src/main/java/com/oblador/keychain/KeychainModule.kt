@@ -241,11 +241,6 @@ class KeychainModule(reactContext: ReactApplicationContext) :
     return result
   }
 
-  private fun isAndroidApi28Or29(): Boolean {
-    return Build.VERSION.SDK_INT == Build.VERSION_CODES.P
-      || Build.VERSION.SDK_INT == Build.VERSION_CODES.Q
-  }
-
   private fun isBiometricOrDeviceCredential(options: ReadableMap?): Boolean {
     val accessControl = getAccessControlOrDefault(options)
     return accessControl == AccessControl.BIOMETRY_CURRENT_SET_OR_DEVICE_PASSCODE
@@ -715,6 +710,10 @@ class KeychainModule(reactContext: ReactApplicationContext) :
     const val EMPTY_STRING = ""
     private val LOG_TAG = KeychainModule::class.java.simpleName
 
+    private fun isAndroidApi28Or29(): Boolean {
+      return Build.VERSION.SDK_INT == Build.VERSION_CODES.P
+        || Build.VERSION.SDK_INT == Build.VERSION_CODES.Q
+    }
 
     // endregion
     // region Helpers
@@ -818,6 +817,8 @@ class KeychainModule(reactContext: ReactApplicationContext) :
       }
 
       val allowedAuthenticators = when {
+        usePasscode && useBiometry && isAndroidApi28Or29() -> BiometricManager.Authenticators.BIOMETRIC_STRONG
+
         usePasscode && useBiometry ->
           BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL
 
@@ -832,7 +833,7 @@ class KeychainModule(reactContext: ReactApplicationContext) :
         promptInfoBuilder.setAllowedAuthenticators(allowedAuthenticators)
       }
 
-      if (!usePasscode) {
+      if (!usePasscode || isAndroidApi28Or29()) {
         promptInfoOptionsMap?.getString(AuthPromptOptions.CANCEL)?.let {
           promptInfoBuilder.setNegativeButtonText(it)
         }
