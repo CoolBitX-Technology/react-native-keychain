@@ -5,6 +5,9 @@ import android.text.TextUtils
 import android.util.Log
 import androidx.annotation.StringDef
 import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
+import androidx.biometric.BiometricPrompt.ERROR_NEGATIVE_BUTTON
+import androidx.biometric.BiometricPrompt.ERROR_USER_CANCELED
 import androidx.biometric.BiometricPrompt.PromptInfo
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
@@ -16,24 +19,23 @@ import com.facebook.react.module.annotations.ReactModule
 import com.oblador.keychain.cipherStorage.CipherCache
 import com.oblador.keychain.cipherStorage.CipherStorage
 import com.oblador.keychain.cipherStorage.CipherStorage.DecryptionResult
-import com.oblador.keychain.cipherStorage.CipherStorageBase
 import com.oblador.keychain.cipherStorage.CipherStorageKeystoreAesCbc
 import com.oblador.keychain.cipherStorage.CipherStorageKeystoreAesGcm
 import com.oblador.keychain.cipherStorage.CipherStorageKeystoreRsaEcb
-import com.oblador.keychain.resultHandler.ResultHandler
-import com.oblador.keychain.resultHandler.ResultHandlerProvider
 import com.oblador.keychain.exceptions.CryptoFailedException
 import com.oblador.keychain.exceptions.EmptyParameterException
 import com.oblador.keychain.exceptions.KeyStoreAccessException
+import com.oblador.keychain.resultHandler.ResultHandler
+import com.oblador.keychain.resultHandler.ResultHandlerProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.isActive
-import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+
 
 @ReactModule(name = KeychainModule.KEYCHAIN_MODULE)
 @Suppress("unused")
@@ -242,6 +244,48 @@ class KeychainModule(reactContext: ReactApplicationContext) :
     return result
   }
 
+  private fun isBiometricOrDeviceCredential(options: ReadableMap?): Boolean {
+    val accessControl = getAccessControlOrDefault(options)
+    return accessControl == AccessControl.BIOMETRY_CURRENT_SET_OR_DEVICE_PASSCODE
+      || accessControl == AccessControl.BIOMETRY_ANY_OR_DEVICE_PASSCODE
+  }
+
+  private fun getDeviceCredentialPromptInfoForAndroidApi28Or29(options: ReadableMap?): PromptInfo {
+    // DEVICE_CREDENTIAL alone is unsupported prior to API 30
+    val promptInfoBuilder: PromptInfo.Builder = getBasePromptInfoBuilder(options)
+    promptInfoBuilder.setDeviceCredentialAllowed(true)
+    return promptInfoBuilder.build()
+  }
+
+  private fun getBasePromptInfoBuilder(options: ReadableMap?): PromptInfo.Builder {
+    val promptInfoOptionsMap: ReadableMap? = getPromptInfoOptionsMap(options)
+    val promptInfoBuilder = PromptInfo.Builder()
+    if (null != promptInfoOptionsMap && promptInfoOptionsMap.hasKey(AuthPromptOptions.TITLE)) {
+      val promptInfoTitle = promptInfoOptionsMap.getString(AuthPromptOptions.TITLE)
+      promptInfoBuilder.setTitle(promptInfoTitle!!)
+    }
+    if (null != promptInfoOptionsMap && promptInfoOptionsMap.hasKey(AuthPromptOptions.SUBTITLE)) {
+      val promptInfoSubtitle = promptInfoOptionsMap.getString(AuthPromptOptions.SUBTITLE)
+      promptInfoBuilder.setSubtitle(promptInfoSubtitle)
+    }
+    if (null != promptInfoOptionsMap && promptInfoOptionsMap.hasKey(AuthPromptOptions.DESCRIPTION)) {
+      val promptInfoDescription = promptInfoOptionsMap.getString(AuthPromptOptions.DESCRIPTION)
+      promptInfoBuilder.setDescription(promptInfoDescription)
+    }
+
+    /* Bypass confirmation to avoid KeyStore unlock timeout being exceeded when using passive biometrics */
+    promptInfoBuilder.setConfirmationRequired(false)
+
+    return promptInfoBuilder
+  }
+
+  private fun getPromptInfoOptionsMap(options: ReadableMap?): ReadableMap? {
+    val promptInfoOptionsMap =
+      if (options != null && options.hasKey(Maps.AUTH_PROMPT)) options.getMap(Maps.AUTH_PROMPT)
+      else null
+    return promptInfoOptionsMap;
+  }
+
   private fun getGenericPassword(alias: String, options: ReadableMap?, promise: Promise) {
     coroutineScope.launch {
       mutex.withLock {
@@ -257,10 +301,34 @@ class KeychainModule(reactContext: ReactApplicationContext) :
           val usePasscode = getUsePasscode(accessControl) && isPasscodeAvailable
           val useBiometry =
             getUseBiometry(accessControl) && (isFingerprintAuthAvailable || isFaceAuthAvailable || isIrisAuthAvailable)
-          val promptInfo = getPromptInfo(options, usePasscode, useBiometry)
+          var promptInfo = getPromptInfo(options, usePasscode, useBiometry)
           val cipher = getCipherStorageByName(storageName)
-          val decryptionResult =
-            decryptCredentials(alias, cipher!!, resultSet, promptInfo)
+
+          var decryptionResult: DecryptionResult
+          try {
+            decryptionResult = decryptCredentials(alias, cipher!!, resultSet, promptInfo)
+          } catch (e: CryptoFailedException) {
+            Log.e(KEYCHAIN_MODULE, "getGenericPassword error message:" + e.message);
+
+            // fallback to device credential on Android API Level 28 or 29
+            if (e.message?.startsWith("code: $ERROR_USER_CANCELED") == true || e.message?.startsWith("code: $ERROR_NEGATIVE_BUTTON") == true) {
+              // click backdrop: message="code: 10, msg: Authentication cancelled"
+              // click cancel button: message="code: 13, msg: Cancel"
+              //
+              // androidx.biometric.BiometricPrompt.ERROR_USER_CANCELED = 10
+              // androidx.biometric.BiometricPrompt.ERROR_NEGATIVE_BUTTON = 13
+              throw e
+            }
+
+            if (isAndroidApi28Or29() && isBiometricOrDeviceCredential(options)) {
+              // fallback to device credential on Android API Level 28 or 29
+              promptInfo = getDeviceCredentialPromptInfoForAndroidApi28Or29(options)
+              decryptionResult = decryptCredentials(alias, cipher!!, resultSet, promptInfo)
+            } else {
+              throw e
+            }
+          }
+
           val credentials = Arguments.createMap()
           credentials.putString(Maps.SERVICE, alias)
           credentials.putString(Maps.USERNAME, decryptionResult.username)
@@ -657,6 +725,10 @@ class KeychainModule(reactContext: ReactApplicationContext) :
     const val EMPTY_STRING = ""
     private val LOG_TAG = KeychainModule::class.java.simpleName
 
+    private fun isAndroidApi28Or29(): Boolean {
+      return Build.VERSION.SDK_INT == Build.VERSION_CODES.P
+        || Build.VERSION.SDK_INT == Build.VERSION_CODES.Q
+    }
 
     // endregion
     // region Helpers
@@ -760,6 +832,9 @@ class KeychainModule(reactContext: ReactApplicationContext) :
       }
 
       val allowedAuthenticators = when {
+        // Android API 28, 29 do not support Authenticators.DEVICE_CREDENTIAL
+        usePasscode && useBiometry && isAndroidApi28Or29() -> BiometricManager.Authenticators.BIOMETRIC_STRONG
+
         usePasscode && useBiometry ->
           BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL
 
@@ -774,7 +849,9 @@ class KeychainModule(reactContext: ReactApplicationContext) :
         promptInfoBuilder.setAllowedAuthenticators(allowedAuthenticators)
       }
 
-      if (!usePasscode) {
+      // Android API 28, 29 不支援 fallback 機制，所以 biometry 失敗或是 cancel 後不會 fallback 到 passcode。
+      // 因此在這兩個 Android 版本，要把原本按鈕上的文字 use passcode 改成 cancel。
+      if (!usePasscode || isAndroidApi28Or29()) {
         promptInfoOptionsMap?.getString(AuthPromptOptions.CANCEL)?.let {
           promptInfoBuilder.setNegativeButtonText(it)
         }

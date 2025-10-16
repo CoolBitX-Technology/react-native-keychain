@@ -1,6 +1,6 @@
 {
   "name": "@coolwallet-app/react-native-keychain",
-  "version": "10.0.0-cbx.0",
+  "version": "10.0.0-cbx.2",
   "description": "Keychain Access for React Native",
   "main": "./lib/commonjs/index.js",
   "module": "./lib/module/index",

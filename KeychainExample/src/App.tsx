@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import SegmentedControlTab from 'react-native-segmented-control-tab';
-import * as Keychain from 'react-native-keychain';
+import * as Keychain from '@coolwallet-app/react-native-keychain';
 
 const ACCESS_CONTROL_OPTIONS = ['None', 'Passcode', 'Password'];
 const ACCESS_CONTROL_OPTIONS_ANDROID = ['None', 'Passcode'];
@@ -24,6 +24,7 @@ const ACCESS_CONTROL_MAP_ANDROID = [
   null,
   Keychain.ACCESS_CONTROL.DEVICE_PASSCODE,
   Keychain.ACCESS_CONTROL.BIOMETRY_CURRENT_SET,
+  Keychain.ACCESS_CONTROL.BIOMETRY_CURRENT_SET_OR_DEVICE_PASSCODE
 ];
 const SECURITY_LEVEL_OPTIONS = ['Any', 'Software', 'Hardware'];
 const SECURITY_LEVEL_MAP = [
@@ -131,7 +132,10 @@ export default function App() {
 
   const load = async () => {
     try {
+      const isAndroid = Platform.OS === 'android';
+      const wrappedAccessControl = isAndroid ? accessControl : undefined;
       const options = {
+        accessControl: wrappedAccessControl,
         authenticationPrompt: {
           title: 'Authentication needed',
           subtitle: 'Subtitle',
@@ -233,7 +237,7 @@ export default function App() {
           <Text style={styles.label}>Access Control</Text>
           <SegmentedControlTab
             selectedIndex={selectedAccessControlIndex}
-            values={biometryType ? [...AC_VALUES, biometryType] : AC_VALUES}
+            values={biometryType ? [...AC_VALUES, biometryType, 'BioOrPasscode'] : AC_VALUES}
             onTabPress={(index) => {
               setAccessControl(AC_MAP[index] || undefined);
               setSelectedAccessControlIndex(index);
