@@ -6,6 +6,8 @@ import android.util.Log
 import androidx.annotation.StringDef
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
+import androidx.biometric.BiometricPrompt.ERROR_NEGATIVE_BUTTON
+import androidx.biometric.BiometricPrompt.ERROR_USER_CANCELED
 import androidx.biometric.BiometricPrompt.PromptInfo
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
@@ -302,7 +304,6 @@ class KeychainModule(reactContext: ReactApplicationContext) :
           var promptInfo = getPromptInfo(options, usePasscode, useBiometry)
           val cipher = getCipherStorageByName(storageName)
 
-          //
           var decryptionResult: DecryptionResult
           try {
             decryptionResult = decryptCredentials(alias, cipher!!, resultSet, promptInfo)
@@ -310,10 +311,12 @@ class KeychainModule(reactContext: ReactApplicationContext) :
             Log.e(KEYCHAIN_MODULE, "getGenericPassword error message:" + e.message);
 
             // fallback to device credential on Android API Level 28 or 29
-            if (e.message?.startsWith("code: 13") == true || e.message?.startsWith("code: 10") == true) {
-              // click cancel button: message="code: 13, msg: Cancel", androidx.biometric.BiometricPrompt.ERROR_USER_CANCELED = 10
-              // click backdrop: message="code: 10, msg: Authentication cancelled", androidx.biometric.BiometricPrompt.ERROR_NEGATIVE_BUTTON = 13
-              // cancel error message: "code: 13, msg: Cancel"
+            if (e.message?.startsWith("code: $ERROR_USER_CANCELED") == true || e.message?.startsWith("code: $ERROR_NEGATIVE_BUTTON") == true) {
+              // click backdrop: message="code: 10, msg: Authentication cancelled"
+              // click cancel button: message="code: 13, msg: Cancel"
+              //
+              // androidx.biometric.BiometricPrompt.ERROR_USER_CANCELED = 10
+              // androidx.biometric.BiometricPrompt.ERROR_NEGATIVE_BUTTON = 13
               throw e
             }
 
@@ -829,6 +832,7 @@ class KeychainModule(reactContext: ReactApplicationContext) :
       }
 
       val allowedAuthenticators = when {
+        // Android API 28, 29 do not support Authenticators.DEVICE_CREDENTIAL
         usePasscode && useBiometry && isAndroidApi28Or29() -> BiometricManager.Authenticators.BIOMETRIC_STRONG
 
         usePasscode && useBiometry ->
@@ -845,6 +849,8 @@ class KeychainModule(reactContext: ReactApplicationContext) :
         promptInfoBuilder.setAllowedAuthenticators(allowedAuthenticators)
       }
 
+      // Android API 28, 29 不支援 fallback 機制，所以 biometry 失敗或是 cancel 後不會 fallback 到 passcode。
+      // 因此在這兩個 Android 版本，要把原本按鈕上的文字 use passcode 改成 cancel。
       if (!usePasscode || isAndroidApi28Or29()) {
         promptInfoOptionsMap?.getString(AuthPromptOptions.CANCEL)?.let {
           promptInfoBuilder.setNegativeButtonText(it)
