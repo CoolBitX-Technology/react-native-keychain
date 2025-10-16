@@ -30,8 +30,11 @@
    ```
 
 4. **部署至 npm（可選）**
-   
-   如果有相關改動需要發布：
+
+如果有相關改動需要發布：
+
+- 修改 package.json 版本號碼，通常是把 `x.x.x-cbx.0` 往上加一版 變成 `x.x.x-cbx.1`
+- 部署至 npm
    ```bash
    yarn run deploy
    ```
