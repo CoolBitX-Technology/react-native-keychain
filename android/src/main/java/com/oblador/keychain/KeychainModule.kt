@@ -16,24 +16,23 @@ import com.facebook.react.module.annotations.ReactModule
 import com.oblador.keychain.cipherStorage.CipherCache
 import com.oblador.keychain.cipherStorage.CipherStorage
 import com.oblador.keychain.cipherStorage.CipherStorage.DecryptionResult
-import com.oblador.keychain.cipherStorage.CipherStorageBase
 import com.oblador.keychain.cipherStorage.CipherStorageKeystoreAesCbc
 import com.oblador.keychain.cipherStorage.CipherStorageKeystoreAesGcm
 import com.oblador.keychain.cipherStorage.CipherStorageKeystoreRsaEcb
-import com.oblador.keychain.resultHandler.ResultHandler
-import com.oblador.keychain.resultHandler.ResultHandlerProvider
 import com.oblador.keychain.exceptions.CryptoFailedException
 import com.oblador.keychain.exceptions.EmptyParameterException
 import com.oblador.keychain.exceptions.KeyStoreAccessException
+import com.oblador.keychain.resultHandler.ResultHandler
+import com.oblador.keychain.resultHandler.ResultHandlerProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.isActive
-import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+
 
 @ReactModule(name = KeychainModule.KEYCHAIN_MODULE)
 @Suppress("unused")
@@ -242,6 +241,53 @@ class KeychainModule(reactContext: ReactApplicationContext) :
     return result
   }
 
+  private fun isAndroidApi28Or29(): Boolean {
+    return Build.VERSION.SDK_INT == Build.VERSION_CODES.P
+      || Build.VERSION.SDK_INT == Build.VERSION_CODES.Q
+  }
+
+  private fun isBiometricOrDeviceCredential(options: ReadableMap?): Boolean {
+    val accessControl = getAccessControlOrDefault(options)
+    return accessControl == AccessControl.BIOMETRY_CURRENT_SET_OR_DEVICE_PASSCODE
+      || accessControl == AccessControl.BIOMETRY_ANY_OR_DEVICE_PASSCODE
+  }
+
+  private fun getDeviceCredentialPromptInfoForAndroidApi28Or29(options: ReadableMap?): PromptInfo {
+    // DEVICE_CREDENTIAL alone is unsupported prior to API 30
+    val promptInfoBuilder: PromptInfo.Builder = getBasePromptInfoBuilder(options)
+    promptInfoBuilder.setDeviceCredentialAllowed(true)
+    return promptInfoBuilder.build()
+  }
+
+  private fun getBasePromptInfoBuilder(options: ReadableMap?): PromptInfo.Builder {
+    val promptInfoOptionsMap: ReadableMap? = getPromptInfoOptionsMap(options)
+    val promptInfoBuilder = PromptInfo.Builder()
+    if (null != promptInfoOptionsMap && promptInfoOptionsMap.hasKey(AuthPromptOptions.TITLE)) {
+      val promptInfoTitle = promptInfoOptionsMap.getString(AuthPromptOptions.TITLE)
+      promptInfoBuilder.setTitle(promptInfoTitle!!)
+    }
+    if (null != promptInfoOptionsMap && promptInfoOptionsMap.hasKey(AuthPromptOptions.SUBTITLE)) {
+      val promptInfoSubtitle = promptInfoOptionsMap.getString(AuthPromptOptions.SUBTITLE)
+      promptInfoBuilder.setSubtitle(promptInfoSubtitle)
+    }
+    if (null != promptInfoOptionsMap && promptInfoOptionsMap.hasKey(AuthPromptOptions.DESCRIPTION)) {
+      val promptInfoDescription = promptInfoOptionsMap.getString(AuthPromptOptions.DESCRIPTION)
+      promptInfoBuilder.setDescription(promptInfoDescription)
+    }
+
+    /* Bypass confirmation to avoid KeyStore unlock timeout being exceeded when using passive biometrics */
+    promptInfoBuilder.setConfirmationRequired(false)
+
+    return promptInfoBuilder
+  }
+
+  private fun getPromptInfoOptionsMap(options: ReadableMap?): ReadableMap? {
+    val promptInfoOptionsMap =
+      if (options != null && options.hasKey(Maps.AUTH_PROMPT)) options.getMap(Maps.AUTH_PROMPT)
+      else null
+    return promptInfoOptionsMap;
+  }
+
   private fun getGenericPassword(alias: String, options: ReadableMap?, promise: Promise) {
     coroutineScope.launch {
       mutex.withLock {
@@ -257,10 +303,22 @@ class KeychainModule(reactContext: ReactApplicationContext) :
           val usePasscode = getUsePasscode(accessControl) && isPasscodeAvailable
           val useBiometry =
             getUseBiometry(accessControl) && (isFingerprintAuthAvailable || isFaceAuthAvailable || isIrisAuthAvailable)
-          val promptInfo = getPromptInfo(options, usePasscode, useBiometry)
+          var promptInfo = getPromptInfo(options, usePasscode, useBiometry)
           val cipher = getCipherStorageByName(storageName)
-          val decryptionResult =
-            decryptCredentials(alias, cipher!!, resultSet, promptInfo)
+
+          var decryptionResult: DecryptionResult
+          try {
+            decryptionResult = decryptCredentials(alias, cipher!!, resultSet, promptInfo)
+          } catch (e: CryptoFailedException) {
+            if (isAndroidApi28Or29() && isBiometricOrDeviceCredential(options)) {
+              // fallback to device credential on Android API Level 28 or 29
+              promptInfo = getDeviceCredentialPromptInfoForAndroidApi28Or29(options)
+              decryptionResult = decryptCredentials(alias, cipher!!, resultSet, promptInfo)
+            } else {
+              throw e
+            }
+          }
+
           val credentials = Arguments.createMap()
           credentials.putString(Maps.SERVICE, alias)
           credentials.putString(Maps.USERNAME, decryptionResult.username)
